@@ -89,6 +89,7 @@ h1 .sub {
 
 .tools {
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 10px;
   min-height: 42px;
@@ -163,6 +164,37 @@ h1 .sub {
   width: 24px;
   min-height: 24px;
   margin: 0;
+}
+
+.opt small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.opt.inkWidth {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(150px, auto) 1fr;
+  gap: 12px;
+  padding: 8px 10px;
+}
+
+.opt.inkWidth span {
+  font-weight: 700;
+}
+
+.opt.inkWidth output {
+  display: inline-block;
+  min-width: 2.2em;
+  margin-left: 4px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper);
+}
+
+.opt.inkWidth input {
+  width: 100%;
 }
 
 button {
@@ -415,7 +447,7 @@ textarea {
 .tools .toolBtn {
   min-width: 74px;
   min-height: 38px;
-  margin-left: auto;
+  margin-left: 0;
 }
 
 .tools .toolBtn + .toolBtn {

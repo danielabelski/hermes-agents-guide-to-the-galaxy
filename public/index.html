@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Hermes Agents Guide to the Galaxy</title>
-    <link rel="stylesheet" href="/styles.css?v=19">
+    <link rel="stylesheet" href="/styles.css?v=20">
   </head>
   <body>
     <main class="diary">
@@ -21,8 +21,6 @@
           </div>
         </header>
         <div class="tools">
-          <label for="strokeWidth">Ink</label>
-          <input id="strokeWidth" type="range" min="2" max="8" step="0.5" value="3.5">
           <button id="undoBtn" type="button" class="toolBtn">Undo</button>
           <button id="clearBtn" type="button" class="toolBtn">Clear</button>
         </div>
@@ -31,7 +29,11 @@
           <div class="optionsGrid">
             <button id="modeBtn" type="button" class="toolBtn">Mode: Split</button>
             <button id="rotateBtn" type="button" class="toolBtn">Rotate</button>
-            <label class="opt"><input id="fastInk" type="checkbox" checked> Fast ink</label>
+            <label class="opt inkWidth" for="strokeWidth">
+              <span>Ink thickness <output id="strokeWidthValue">3.5</output></span>
+              <input id="strokeWidth" type="range" min="2" max="8" step="0.5" value="3.5">
+            </label>
+            <label class="opt"><input id="fastInk" type="checkbox"> Fast ink <small>(less smoothing)</small></label>
             <label class="opt"><input id="streamOn" type="checkbox" checked> Stream</label>
             <label class="opt"><input id="darkOn" type="checkbox"> Dark mode</label>
           </div>
@@ -107,6 +109,6 @@
         </details>
       </section>
     </main>
-    <script src="/app.js?v=19"></script>
+    <script src="/app.js?v=20"></script>
   </body>
 </html>

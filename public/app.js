@@ -66,6 +66,7 @@
   var modelEl = document.getElementById("model");
   var tokenEl = document.getElementById("token");
   var strokeWidthEl = document.getElementById("strokeWidth");
+  var strokeWidthValueEl = document.getElementById("strokeWidthValue");
   var fastInkEl = document.getElementById("fastInk");
   var streamEl = document.getElementById("streamOn");
   var rotateBtn = document.getElementById("rotateBtn");
@@ -616,6 +617,14 @@
     }
     if (!drawing) return stopEvent(event);
     flushQueue();
+    // Quadratic smoothing ends at the midpoint of the final pair. Complete
+    // the short tail on pen-up so letters do not look clipped.
+    if (strokeDrew && currentStroke && !currentStroke.fast && last && pathEnd) {
+      ctx.beginPath();
+      ctx.moveTo(pathEnd.x, pathEnd.y);
+      ctx.lineTo(last.x, last.y);
+      ctx.stroke();
+    }
     if (!strokeDrew && last) {
       ctx.lineWidth = Number(strokeWidthEl && strokeWidthEl.value) || 3.5;
       drawDot(last);
@@ -1475,6 +1484,21 @@
   add(zoomOutBtn, "click", zoomOut);
   add(panBtn, "click", togglePan);
   add(resetViewBtn, "click", resetViewAndRedraw);
+
+  var savedStrokeWidth = storageGet("diaryStrokeWidth");
+  if (savedStrokeWidth && strokeWidthEl) strokeWidthEl.value = savedStrokeWidth;
+  if (strokeWidthValueEl && strokeWidthEl) strokeWidthValueEl.value = strokeWidthEl.value;
+  add(strokeWidthEl, "input", function () {
+    if (strokeWidthValueEl) strokeWidthValueEl.value = strokeWidthEl.value;
+    storageSet("diaryStrokeWidth", strokeWidthEl.value);
+  });
+  if (fastInkEl) {
+    fastInkEl.checked = storageGet("diaryFastInk") === "1";
+    add(fastInkEl, "change", function () {
+      storageSet("diaryFastInk", fastInkEl.checked ? "1" : "0");
+      setStatus(fastInkEl.checked ? "Fast ink" : "Smooth ink");
+    });
+  }
 
   // The diary is a Hermes client first. Remember an explicit alternate target,
   // but default new devices to the secured, tool-capable firm-agent channel.
