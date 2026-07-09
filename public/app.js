@@ -1476,6 +1476,15 @@
   add(panBtn, "click", togglePan);
   add(resetViewBtn, "click", resetViewAndRedraw);
 
+  // The diary is a Hermes client first. Remember an explicit alternate target,
+  // but default new devices to the secured, tool-capable firm-agent channel.
+  var savedTarget = storageGet("diaryTarget");
+  targetEl.value = savedTarget || "hermes";
+  add(targetEl, "change", function () {
+    storageSet("diaryTarget", targetEl.value);
+    setStatus(targetEl.value === "hermes" ? "Firm tools ready" : "Target changed");
+  });
+
   // Apply saved mode + orientation before first paint.
   mode = storageGet("diaryMode") === "riddle" ? "riddle" : "split";
   landscape = storageGet("diaryLandscape") === "1";
