@@ -93,13 +93,10 @@
   var panBtn = document.getElementById("panBtn");
   var resetViewBtn = document.getElementById("resetView");
   var eraserBtn = document.getElementById("eraserBtn");
-
-  // Keep every frequent action in one compact strip.
-  var actionStrip = document.querySelector(".actions");
-  if (actionStrip && historyBtn) {
-    actionStrip.insertBefore(undoBtn, historyBtn);
-    actionStrip.insertBefore(clearBtn, historyBtn);
-  }
+  var lassoBtn = document.getElementById("lassoBtn");
+  var copyBtn = document.getElementById("copyBtn");
+  var pasteBtn = document.getElementById("pasteBtn");
+  var rotateSelectionBtn = document.getElementById("rotateSelectionBtn");
 
   var landscape = false;
   var mode = "split"; // "split" | "riddle"
@@ -132,6 +129,14 @@
   var eraserMode = false;
   var erasing = false;
   var currentEraseAction = null;
+  var lassoMode = false;
+  var lassoing = false;
+  var lassoPoints = [];
+  var selectedStrokes = [];
+  var selectionClipboard = [];
+  var movingSelection = false;
+  var selectionDragStart = null;
+  var selectionDragOriginal = null;
   var config = {};
 
   // Pan/zoom: strokes are stored in "world" coordinates. The visible canvas is
@@ -182,14 +187,36 @@
 
   function togglePan() {
     panMode = !panMode;
-    if (panMode) setEraserMode(false);
+    if (panMode) { setEraserMode(false); setLassoMode(false); }
     if (panBtn) panBtn.className = panMode ? "active" : "";
     setStatus(panMode ? "Pan mode — drag to move the page" : "Draw mode");
   }
 
   function setEraserMode(enabled) {
     eraserMode = !!enabled;
+    if (eraserMode) setLassoMode(false);
     if (eraserBtn) eraserBtn.className = eraserMode ? "active" : "";
+  }
+
+  function setLassoMode(enabled) {
+    lassoMode = !!enabled;
+    lassoing = false;
+    lassoPoints = [];
+    if (lassoMode) {
+      eraserMode = false;
+      panMode = false;
+      if (eraserBtn) eraserBtn.className = "";
+      if (panBtn) panBtn.className = "";
+    }
+    if (lassoBtn) lassoBtn.className = lassoMode ? "active" : "";
+    if (!lassoMode) selectedStrokes = [];
+    syncSelectionButtons();
+    redrawStrokes();
+  }
+
+  function toggleLasso() {
+    setLassoMode(!lassoMode);
+    setStatus(lassoMode ? "Lasso: circle ink, then hold and drag" : "Pen mode");
   }
 
   function toggleEraser() {
@@ -469,9 +496,114 @@
     for (var i = 0; i < strokes.length; i += 1) {
       drawStoredStroke(strokes[i]);
     }
+    drawSelectionOverlay();
     ctx.strokeStyle = inkColor();
     dirty = strokes.length > 0;
     updateHint();
+  }
+
+  function cloneStroke(stroke) {
+    return { width: stroke.width, fast: !!stroke.fast, pts: stroke.pts.map(function (p) { return { x: p.x, y: p.y }; }) };
+  }
+
+  function cloneStrokes(list) { return list.map(cloneStroke); }
+
+  function selectionBounds(list) {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (var i = 0; i < list.length; i += 1) {
+      for (var j = 0; j < list[i].pts.length; j += 1) {
+        var p = list[i].pts[j];
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+      }
+    }
+    return isFinite(minX) ? { minX: minX, minY: minY, maxX: maxX, maxY: maxY } : null;
+  }
+
+  function drawSelectionOverlay() {
+    ctx.save();
+    ctx.setLineDash ? ctx.setLineDash([7 / view.scale, 5 / view.scale]) : null;
+    ctx.lineWidth = 1.5 / view.scale;
+    ctx.strokeStyle = darkMode ? "#fff" : "#111";
+    if (lassoPoints.length > 1) {
+      ctx.beginPath(); ctx.moveTo(lassoPoints[0].x, lassoPoints[0].y);
+      for (var i = 1; i < lassoPoints.length; i += 1) ctx.lineTo(lassoPoints[i].x, lassoPoints[i].y);
+      ctx.stroke();
+    }
+    var b = selectionBounds(selectedStrokes);
+    if (b) ctx.strokeRect(b.minX - 8, b.minY - 8, b.maxX - b.minX + 16, b.maxY - b.minY + 16);
+    ctx.restore();
+  }
+
+  function pointInPolygon(point, polygon) {
+    var inside = false;
+    for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      var a = polygon[i], b = polygon[j];
+      if (((a.y > point.y) !== (b.y > point.y)) &&
+          point.x < (b.x - a.x) * (point.y - a.y) / ((b.y - a.y) || 0.00001) + a.x) inside = !inside;
+    }
+    return inside;
+  }
+
+  function selectWithLasso() {
+    selectedStrokes = [];
+    if (lassoPoints.length > 2) {
+      for (var i = 0; i < strokes.length; i += 1) {
+        for (var j = 0; j < strokes[i].pts.length; j += 1) {
+          if (pointInPolygon(strokes[i].pts[j], lassoPoints)) { selectedStrokes.push(strokes[i]); break; }
+        }
+      }
+    }
+    lassoPoints = [];
+    syncSelectionButtons();
+    redrawStrokes();
+    setStatus(selectedStrokes.length ? selectedStrokes.length + " stroke(s) selected" : "Nothing selected");
+  }
+
+  function pointInSelection(point) {
+    var b = selectionBounds(selectedStrokes);
+    return !!b && point.x >= b.minX - 14 && point.x <= b.maxX + 14 && point.y >= b.minY - 14 && point.y <= b.maxY + 14;
+  }
+
+  function syncSelectionButtons() {
+    if (copyBtn) copyBtn.disabled = !selectedStrokes.length;
+    if (rotateSelectionBtn) rotateSelectionBtn.disabled = !selectedStrokes.length;
+    if (pasteBtn) pasteBtn.disabled = !selectionClipboard.length;
+  }
+
+  function snapshotChange() { historyActions.push({ type: "change", before: cloneStrokes(strokes) }); }
+
+  function copySelection() {
+    if (!selectedStrokes.length) return;
+    selectionClipboard = cloneStrokes(selectedStrokes);
+    syncSelectionButtons();
+    setStatus("Selection copied");
+  }
+
+  function pasteSelection() {
+    if (!selectionClipboard.length) return;
+    snapshotChange();
+    selectedStrokes = cloneStrokes(selectionClipboard);
+    for (var i = 0; i < selectedStrokes.length; i += 1) {
+      for (var j = 0; j < selectedStrokes[i].pts.length; j += 1) {
+        selectedStrokes[i].pts[j].x += 24; selectedStrokes[i].pts[j].y += 24;
+      }
+      strokes.push(selectedStrokes[i]);
+    }
+    dirty = true; syncSelectionButtons(); redrawStrokes(); setStatus("Selection pasted - drag to place");
+  }
+
+  function rotateSelection() {
+    var b = selectionBounds(selectedStrokes); if (!b) return;
+    snapshotChange();
+    var cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
+    for (var i = 0; i < selectedStrokes.length; i += 1) {
+      for (var j = 0; j < selectedStrokes[i].pts.length; j += 1) {
+        var p = selectedStrokes[i].pts[j], dx = p.x - cx, dy = p.y - cy;
+        p.x = cx - dy; p.y = cy + dx;
+      }
+    }
+    redrawStrokes(); setStatus("Selection rotated 90 degrees");
   }
 
   function undoStroke() {
@@ -485,6 +617,10 @@
       for (var r = 0; r < action.removed.length; r += 1) {
         strokes.splice(action.removed[r].index, 0, action.removed[r].stroke);
       }
+    } else if (action.type === "change") {
+      strokes = cloneStrokes(action.before);
+      selectedStrokes = [];
+      syncSelectionButtons();
     }
     redrawStrokes();
     setStatus(strokes.length ? "Undo" : "Page blank");
@@ -661,7 +797,7 @@
     var t = event.target || event.srcElement;
     var control = t;
     while (control && control !== wrap) {
-      if (control.tagName === "BUTTON") return true;
+      if (/^(BUTTON|INPUT|LABEL|SUMMARY|SELECT|TEXTAREA)$/.test(control.tagName || "")) return true;
       control = control.parentNode;
     }
     if (animating) return stopEvent(event);
@@ -675,6 +811,24 @@
       panning = true;
       panStartScreen = canvasPointFromEvent(event);
       panStartOffset = { ox: view.ox, oy: view.oy };
+      return stopEvent(event);
+    }
+
+    if (lassoMode) {
+      var selectionPoint = pointFromEvent(event);
+      if (selectedStrokes.length && pointInSelection(selectionPoint)) {
+        snapshotChange();
+        movingSelection = true;
+        selectionDragStart = selectionPoint;
+        selectionDragOriginal = selectedStrokes.map(function (stroke) {
+          return { stroke: stroke, pts: stroke.pts.map(function (p) { return { x: p.x, y: p.y }; }) };
+        });
+      } else {
+        selectedStrokes = [];
+        lassoing = true;
+        lassoPoints = [selectionPoint];
+      }
+      syncSelectionButtons(); redrawStrokes();
       return stopEvent(event);
     }
 
@@ -719,6 +873,23 @@
       redrawStrokes();
       return stopEvent(event);
     }
+    if (movingSelection) {
+      var mp = pointFromEvent(event), dx = mp.x - selectionDragStart.x, dy = mp.y - selectionDragStart.y;
+      for (var m = 0; m < selectionDragOriginal.length; m += 1) {
+        var original = selectionDragOriginal[m];
+        for (var n = 0; n < original.pts.length; n += 1) {
+          original.stroke.pts[n].x = original.pts[n].x + dx;
+          original.stroke.pts[n].y = original.pts[n].y + dy;
+        }
+      }
+      redrawStrokes(); return stopEvent(event);
+    }
+    if (lassoing) {
+      var lp = pointFromEvent(event);
+      var prior = lassoPoints[lassoPoints.length - 1];
+      if (!prior || Math.abs(lp.x - prior.x) + Math.abs(lp.y - prior.y) > 3 / view.scale) lassoPoints.push(lp);
+      redrawStrokes(); return stopEvent(event);
+    }
     if (erasing) {
       eraseAt(pointFromEvent(event));
       return stopEvent(event);
@@ -741,6 +912,13 @@
       panning = false;
       panStartScreen = null;
       return stopEvent(event);
+    }
+    if (movingSelection) {
+      movingSelection = false; selectionDragStart = null; selectionDragOriginal = null;
+      dirty = true; redrawStrokes(); setStatus("Selection moved"); return stopEvent(event);
+    }
+    if (lassoing) {
+      lassoing = false; selectWithLasso(); return stopEvent(event);
     }
     if (erasing) {
       erasing = false;
@@ -777,6 +955,9 @@
     strokes = [];
     historyActions = [];
     currentStroke = null;
+    selectedStrokes = [];
+    lassoPoints = [];
+    syncSelectionButtons();
     dirty = false;
     clearScreen();
     updateHint();
@@ -1647,6 +1828,10 @@
   add(panBtn, "click", togglePan);
   add(resetViewBtn, "click", resetViewAndRedraw);
   add(eraserBtn, "click", toggleEraser);
+  add(lassoBtn, "click", toggleLasso);
+  add(copyBtn, "click", copySelection);
+  add(pasteBtn, "click", pasteSelection);
+  add(rotateSelectionBtn, "click", rotateSelection);
 
   var savedStrokeWidth = storageGet("diaryStrokeWidth");
   if (savedStrokeWidth && strokeWidthEl) strokeWidthEl.value = savedStrokeWidth;
@@ -1689,6 +1874,7 @@
     add(darkEl, "change", function () { applyDark(darkEl.checked); });
   }
   syncBodyClass();
+  syncSelectionButtons();
 
   resizeCanvas();
   showHint(true);
