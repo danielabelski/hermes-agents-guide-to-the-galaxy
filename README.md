@@ -38,7 +38,7 @@ bookmark it. Config is via env vars (all optional):
 | `KINDLE_ADAPTER_URL` | `http://127.0.0.1:8793/ingest` | Hermes Kindle platform ingest endpoint |
 | `KINDLE_USER` | `kindle` | Stable Hermes user identity for the device |
 | `DIARY_AUTH_TOKEN` | *(unset)* | If set, `/api/*` requires this secret. Open the diary once with `?k=<token>` — it's saved and sent on every call. Unset = open (LAN default). |
-| `DIARY_REMOTE_KEY` | *(unset)* | Permanent key required for API and handwriting access through a public `*.ts.net` Funnel hostname. Bookmark the Funnel URL with `?rk=<key>`. LAN access remains unchanged. |
+| `DIARY_REMOTE_KEY` | *(unset)* | Permanent key required for API and handwriting access through a public `*.ts.net` Funnel hostname. Bookmark `/remote/<key>`; LAN access remains unchanged. |
 
 ## Features
 
@@ -134,7 +134,7 @@ device secret. This does not depend on Kindle cookies or local storage.
    ```powershell
    $key = [Environment]::GetEnvironmentVariable('DIARY_REMOTE_KEY', 'User')
    $dns = ((tailscale status --json | ConvertFrom-Json).Self.DNSName).TrimEnd('.')
-   "https://$dns/?rk=$key"
+   "https://$dns/remote/$key"
    ```
 
 5. Verify the boundary before using it:
@@ -164,4 +164,5 @@ if it is copied into chat, logs, screenshots, or any system you do not trust.
 - For away-from-LAN Kindle access, configure `DIARY_REMOTE_KEY` before enabling
   Tailscale Funnel. Remote `*.ts.net` requests without the key receive `401`,
   including `/api/config`, session history, and stored handwriting images. The
-  key is carried by the permanent Kindle bookmark rather than cookies or storage.
+  key is carried in the permanent `/remote/<key>` Kindle bookmark rather than
+  cookies, query-string persistence, or local storage.

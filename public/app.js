@@ -7,7 +7,9 @@
   (function () {
     var m = (window.location.search || "").match(/[?&]k=([^&#]+)/);
     var rm = (window.location.search || "").match(/[?&]rk=([^&#]+)/);
+    var rpm = (window.location.pathname || "").match(/^\/remote\/([^/]+)\/?$/);
     if (rm) remoteKey = decodeURIComponent(rm[1]);
+    else if (rpm) remoteKey = decodeURIComponent(rpm[1]);
     try {
       if (m) { authTok = decodeURIComponent(m[1]); window.localStorage.setItem("diaryAuth", authTok); }
       else { authTok = window.localStorage.getItem("diaryAuth") || ""; }

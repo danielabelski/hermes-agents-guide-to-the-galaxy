@@ -158,7 +158,10 @@ function remoteKeyOk(req) {
   if (!remoteAccessKey) return false;
   if ((req.headers["x-diary-remote-key"] || "") === remoteAccessKey) return true;
   try {
-    return new URL(req.url, "http://diary.local").searchParams.get("rk") === remoteAccessKey;
+    const url = new URL(req.url, "http://diary.local");
+    if (url.searchParams.get("rk") === remoteAccessKey) return true;
+    const match = url.pathname.match(/^\/remote\/([^/]+)\/?$/);
+    return Boolean(match && decodeURIComponent(match[1]) === remoteAccessKey);
   } catch {
     return false;
   }
@@ -932,6 +935,13 @@ async function serveImage(req, res) {
 async function serveStatic(req, res) {
   const url = new URL(req.url, "http://diary.local");
   let rel = decodeURIComponent(url.pathname);
+  if (isRemoteHost(req) && /^\/remote\/[^/]+\/?$/.test(rel)) {
+    if (!remoteKeyOk(req)) {
+      send(res, 401, "Unauthorized", "text/plain; charset=utf-8");
+      return;
+    }
+    rel = "/index.html";
+  }
   if (rel === "/") rel = "/index.html";
   const file = path.normalize(path.join(publicDir, rel));
   if (!file.startsWith(publicDir)) {

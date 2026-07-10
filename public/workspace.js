@@ -4,7 +4,9 @@
   try {
     var match = (window.location.search || "").match(/[?&]k=([^&#]+)/);
     var remoteMatch = (window.location.search || "").match(/[?&]rk=([^&#]+)/);
+    var remotePathMatch = (window.location.pathname || "").match(/^\/remote\/([^/]+)\/?$/);
     if (remoteMatch) remoteKey = decodeURIComponent(remoteMatch[1]);
+    else if (remotePathMatch) remoteKey = decodeURIComponent(remotePathMatch[1]);
     authTok = match ? decodeURIComponent(match[1]) : (window.localStorage.getItem("diaryAuth") || "");
   } catch (e) {}
 
