@@ -120,6 +120,8 @@ const defaultTextEndpoint = process.env.DIARY_TEXT_ENDPOINT || "http://127.0.0.1
 const defaultVisionEndpoint = process.env.DIARY_VISION_ENDPOINT || "http://127.0.0.1:8005/v1/chat/completions";
 const defaultTextModel = process.env.DIARY_TEXT_MODEL || "hermes-agent";
 const defaultVisionModel = process.env.DIARY_VISION_MODEL || "qwen3vl-8b";
+const ocrCleanupEndpoint = process.env.DIARY_OCR_CLEANUP_ENDPOINT || "http://127.0.0.1:8020/v1/chat/completions";
+const ocrCleanupModel = process.env.DIARY_OCR_CLEANUP_MODEL || "qwen3.6-27b-nvfp4";
 const hermesEndpoint = process.env.HERMES_ENDPOINT || "http://127.0.0.1:8642/v1/chat/completions";
 const localTextEndpoint = process.env.DIARY_LOCAL_TEXT_ENDPOINT || "http://127.0.0.1:8004/v1/chat/completions";
 const localTextModel = process.env.DIARY_LOCAL_TEXT_MODEL || "gpt-oss-20b";
@@ -311,6 +313,36 @@ async function callChat({ endpoint, model, token, text, imageDataUrl, mode, hist
     throw new Error(json?.error?.message || `Model returned ${response.status}: ${raw.slice(0, 600)}`);
   }
   return { text: choiceText(json), endpoint, model, mode };
+}
+
+async function cleanHandwritingTranscription(rawText) {
+  const response = await fetch(ocrCleanupEndpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: ocrCleanupModel,
+      temperature: 0,
+      max_tokens: 180,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You correct OCR from a Kindle Scribe for a CPA firm notebook.",
+            "Return only the corrected transcription, with no preface or quotation marks.",
+            "Make the smallest defensible corrections to spacing, capitalization, and likely proper names.",
+            "Do not answer the note and do not add facts. If uncertain, preserve the original wording.",
+            "Firm vocabulary includes Bearden, Hermes, Onyx, Jameson Bearden, client, engagement, tax, and audit."
+          ].join(" ")
+        },
+        { role: "user", content: rawText }
+      ]
+    })
+  });
+  const raw = await response.text();
+  let json;
+  try { json = JSON.parse(raw); } catch { throw new Error("OCR cleanup returned invalid JSON"); }
+  if (!response.ok) throw new Error(json?.error?.message || `OCR cleanup returned ${response.status}`);
+  return choiceText(json).replace(/^['"]|['"]$/g, "").trim();
 }
 
 // Streaming variant: parses the gateway's OpenAI SSE and fires onToken(delta)
@@ -603,12 +635,19 @@ async function handleSend(req, res) {
         : m.text
     }));
 
-    function commitSession(replyText) {
+    function commitSession(replyText, transcription = "", rawTranscription = "") {
       if (isNewSession) sessions.unshift(session);
       const now = new Date().toISOString();
       const inkRefPromise = hasInk ? writeInkFile(session.id, body.imageDataUrl) : Promise.resolve("");
       return inkRefPromise.then(async (inkRef) => {
-        session.messages.push({ role: "user", text: body.text || "", ink: inkRef, time: now });
+        session.messages.push({
+          role: "user",
+          text: body.text || "",
+          transcription,
+          rawTranscription,
+          ink: inkRef,
+          time: now
+        });
         session.messages.push({ role: "assistant", text: replyText, time: now });
         if (!session.title) {
           const wrote = replyText.match(/^You wrote:\s*"([^"\n]{1,60})/i);
@@ -624,6 +663,7 @@ async function handleSend(req, res) {
       const startedCh = Date.now();
       // The channel takes text; transcribe handwriting via the vision model first.
       let noteText = body.text || "";
+      let rawTranscription = "";
       if (hasInk) {
         try {
           const vis = await callChat({
@@ -634,7 +674,14 @@ async function handleSend(req, res) {
             imageDataUrl: body.imageDataUrl,
             mode: "vision"
           });
-          noteText = (noteText ? noteText + "\n\n" : "") + (vis.text || "");
+          const visionOutput = (vis.text || "").trim();
+          const quotedTranscription = visionOutput.match(/^You wrote:\s*["“]([^"”\n]+)["”]/i);
+          rawTranscription = (quotedTranscription?.[1] || visionOutput).trim();
+          let cleaned = rawTranscription;
+          if (rawTranscription) {
+            try { cleaned = await cleanHandwritingTranscription(rawTranscription); } catch {}
+          }
+          noteText = (noteText ? noteText + "\n\n" : "") + cleaned;
         } catch {
           /* fall through with whatever text we have */
         }
@@ -671,7 +718,7 @@ async function handleSend(req, res) {
         return;
       }
 
-      await commitSession(result.text);
+      await commitSession(result.text, noteText, rawTranscription);
       logSend({
         kind: "send", target: "hermes", channel: true, sessionId: session.id,
         textChars: noteText.length, imageBytes, responseChars: result.text.length,
