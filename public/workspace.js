@@ -1,7 +1,10 @@
 (function () {
   var authTok = "";
+  var remoteKey = "";
   try {
     var match = (window.location.search || "").match(/[?&]k=([^&#]+)/);
+    var remoteMatch = (window.location.search || "").match(/[?&]rk=([^&#]+)/);
+    if (remoteMatch) remoteKey = decodeURIComponent(remoteMatch[1]);
     authTok = match ? decodeURIComponent(match[1]) : (window.localStorage.getItem("diaryAuth") || "");
   } catch (e) {}
 
@@ -48,6 +51,7 @@
       xhr.open(method, url, true);
       xhr.setRequestHeader("content-type", "application/json");
       if (authTok) xhr.setRequestHeader("x-diary-auth", authTok);
+      if (remoteKey) xhr.setRequestHeader("x-diary-remote-key", remoteKey);
       xhr.onreadystatechange = function () {
         if (xhr.readyState !== 4) return;
         var json;
@@ -176,7 +180,9 @@
     workbench.hidden = false;
     artifactName.textContent = artifact.name;
     artifactRevision.textContent = artifact.revision.slice(0, 22) + "…";
-    var src = artifact.contentUrl + (authTok ? ("?k=" + encodeURIComponent(authTok)) : "");
+    var query = remoteKey ? ("?rk=" + encodeURIComponent(remoteKey)) :
+      (authTok ? ("?k=" + encodeURIComponent(authTok)) : "");
+    var src = artifact.contentUrl + query;
     frame.style.display = artifact.type === "html" ? "block" : "none";
     image.style.display = artifact.type === "image" ? "block" : "none";
     if (artifact.type === "html") frame.src = src;

@@ -139,6 +139,7 @@ const kindleUser = process.env.KINDLE_USER || "kindle";
 // x-diary-auth header or a ?k= query param). Unset = open, exactly as before.
 // The page is served openly; only the API (which reaches models + your data) is gated.
 const authToken = process.env.DIARY_AUTH_TOKEN || "";
+const remoteAccessKey = process.env.DIARY_REMOTE_KEY || "";
 const trustedIps = new Set(String(process.env.DIARY_TRUSTED_IPS || "")
   .split(",")
   .map(value => value.trim())
@@ -148,7 +149,23 @@ function remoteIp(req) {
   return String(req.socket?.remoteAddress || "").replace(/^::ffff:/, "");
 }
 
+function isRemoteHost(req) {
+  const host = String(req.headers.host || "").split(":")[0].toLowerCase();
+  return host.endsWith(".ts.net");
+}
+
+function remoteKeyOk(req) {
+  if (!remoteAccessKey) return false;
+  if ((req.headers["x-diary-remote-key"] || "") === remoteAccessKey) return true;
+  try {
+    return new URL(req.url, "http://diary.local").searchParams.get("rk") === remoteAccessKey;
+  } catch {
+    return false;
+  }
+}
+
 function authOk(req) {
+  if (isRemoteHost(req)) return remoteKeyOk(req);
   if (!authToken) return true;
   if (trustedIps.has(remoteIp(req))) return true;
   if ((req.headers["x-diary-auth"] || "") === authToken) return true;
@@ -214,7 +231,7 @@ function send(res, status, body, type = "application/json; charset=utf-8") {
     "cache-control": "no-store",
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type,authorization,x-diary-auth"
+    "access-control-allow-headers": "content-type,authorization,x-diary-auth,x-diary-remote-key"
   });
   res.end(body);
 }
@@ -950,13 +967,16 @@ const server = http.createServer(async (req, res) => {
       return;
     }
   }
-  // Gate the API (models + your data) when a shared secret is configured.
-  // /api/config stays open so the page can learn whether auth is required.
-  if (req.url.startsWith("/api/") && req.url.indexOf("/api/config") !== 0 && !authOk(req)) {
-    send(res, 401, JSON.stringify({ ok: false, error: "unauthorized — open the diary with your ?k= link" }));
+  // Funnel is public internet: every API call and stored handwriting image
+  // requires the permanent remote bookmark key. LAN behavior remains unchanged.
+  const requestPath = new URL(req.url, "http://diary.local").pathname;
+  const protectedRemotePath = requestPath.startsWith("/api/") || requestPath.startsWith("/img/");
+  const localProtectedApi = requestPath.startsWith("/api/") && requestPath !== "/api/config";
+  if (((isRemoteHost(req) && protectedRemotePath) || (!isRemoteHost(req) && localProtectedApi)) && !authOk(req)) {
+    send(res, 401, JSON.stringify({ ok: false, error: "unauthorized — use the permanent remote diary bookmark" }));
     return;
   }
-  if (req.url === "/api/config") {
+  if (requestPath === "/api/config") {
     send(res, 200, JSON.stringify({
       defaultTextEndpoint,
       defaultVisionEndpoint,

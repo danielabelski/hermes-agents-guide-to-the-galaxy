@@ -3,8 +3,11 @@
   // If the bridge sets DIARY_AUTH_TOKEN, open the diary with ?k=<token> once;
   // we stash it and send it on every API call. Harmless when no token is set.
   var authTok = "";
+  var remoteKey = "";
   (function () {
     var m = (window.location.search || "").match(/[?&]k=([^&#]+)/);
+    var rm = (window.location.search || "").match(/[?&]rk=([^&#]+)/);
+    if (rm) remoteKey = decodeURIComponent(rm[1]);
     try {
       if (m) { authTok = decodeURIComponent(m[1]); window.localStorage.setItem("diaryAuth", authTok); }
       else { authTok = window.localStorage.getItem("diaryAuth") || ""; }
@@ -12,6 +15,12 @@
   }());
   function setAuth(xhr) {
     if (authTok) { try { xhr.setRequestHeader("x-diary-auth", authTok); } catch (e) {} }
+    if (remoteKey) { try { xhr.setRequestHeader("x-diary-remote-key", remoteKey); } catch (e) {} }
+  }
+
+  function secureMediaUrl(url) {
+    if (!remoteKey || !url) return url;
+    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "rk=" + encodeURIComponent(remoteKey);
   }
 
   // --- Client diagnostics -------------------------------------------------
@@ -914,7 +923,7 @@
       if (m.role === "user") {
         html += '<p class="who">You</p>';
         if (m.text) html += markdownLite(m.text);
-        if (m.ink) html += '<img class="inkThumb" src="' + m.ink + '" alt="handwritten entry">';
+        if (m.ink) html += '<img class="inkThumb" src="' + secureMediaUrl(m.ink) + '" alt="handwritten entry">';
       } else {
         html += '<p class="who">Hermes</p>';
         html += markdownLite(m.text);
