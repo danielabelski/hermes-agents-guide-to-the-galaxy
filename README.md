@@ -9,13 +9,12 @@ browser is the only channel, so the app is built to feel like one.
 ## How it works
 
 ```
-Kindle Scribe browser  ──►  bridge (this app, :8791)  ──►  Hermes gateway (:8642)
+Kindle browser → diary bridge (:8791) → Kindle adapter (:8793) → Hermes Gateway
 ```
 
-The Kindle never sees the Hermes API token — the bridge loads it server-side
-(from `API_SERVER_KEY` in `%LOCALAPPDATA%\hermes\config.yaml`, or the
-`HERMES_TOKEN` / `HERMES_API_KEY` / `API_SERVER_KEY` env vars) and adds it to
-the upstream request.
+The Kindle never sees the Hermes API or adapter tokens. The bridge transcribes
+the handwriting locally, submits text to Hermes's authenticated localhost-only
+Kindle platform adapter, and receives the completed tool-assisted agent reply.
 
 ## Run it
 
@@ -32,11 +31,23 @@ bookmark it. Config is via env vars (all optional):
 | `DIARY_HOST` | `0.0.0.0` | Bind address |
 | `HERMES_ENDPOINT` | `http://127.0.0.1:8642/v1/chat/completions` | Upstream gateway |
 | `DIARY_TEXT_MODEL` | `hermes-agent` | Model requested upstream |
+| `DIARY_VISION_ENDPOINT` | `http://127.0.0.1:8005/v1/chat/completions` | Vision model used for handwriting OCR |
+| `DIARY_VISION_MODEL` | `qwen3vl-8b` | Vision model name |
+| `DIARY_OCR_CLEANUP_ENDPOINT` | `http://127.0.0.1:8020/v1/chat/completions` | Text model used to normalize uncertain OCR |
+| `DIARY_OCR_CLEANUP_MODEL` | `qwen3.6-27b-nvfp4` | OCR cleanup model name |
+| `KINDLE_ADAPTER_URL` | `http://127.0.0.1:8793/ingest` | Hermes Kindle platform ingest endpoint |
+| `KINDLE_USER` | `kindle` | Stable Hermes user identity for the device |
 | `DIARY_AUTH_TOKEN` | *(unset)* | If set, `/api/*` requires this secret. Open the diary once with `?k=<token>` — it's saved and sent on every call. Unset = open (LAN default). |
 
 ## Features
 
 - **Pen input** tuned for e-ink — batched strokes, coalesced points, undo.
+- **Two-stage handwriting OCR** — a vision model reads the ink, then Qwen3.6
+  minimally corrects spacing and likely proper names before Hermes sees it. Raw
+  and corrected transcriptions are retained with the diary entry.
+- **Full Hermes tools** — the first-class Kindle platform uses normal gateway
+  sessions and configured platform toolsets. Firm/person questions are grounded
+  with client tools instead of answered from model memory.
 - **Two display modes** (toggle in Options):
   - **Split** — writing on top, Hermes's latest reply in a pane below.
   - **Riddle** — your ink dissolves and Hermes's words form on the page itself.
@@ -90,11 +101,6 @@ bookmark it. Config is via env vars (all optional):
   with your `DOMAIN\user` (e.g. from `whoami`).
 
 ## Data & privacy
-
-- If a Kindle browser does not retain cookies or local storage, set
-  `DIARY_TRUSTED_IPS` to its fixed LAN address (or a comma-separated list).
-  Those devices can use the plain diary URL; every other client still needs
-  `DIARY_AUTH_TOKEN`.
 
 - Entries and handwriting images live under `data/` and are **git-ignored** —
   personal content never enters the repo.
