@@ -92,6 +92,7 @@
   var zoomOutBtn = document.getElementById("zoomOut");
   var panBtn = document.getElementById("panBtn");
   var resetViewBtn = document.getElementById("resetView");
+  var eraserBtn = document.getElementById("eraserBtn");
 
   // Keep every frequent action in one compact strip.
   var actionStrip = document.querySelector(".actions");
@@ -127,6 +128,10 @@
   var rectCache = null;
   var strokes = [];
   var currentStroke = null;
+  var historyActions = [];
+  var eraserMode = false;
+  var erasing = false;
+  var currentEraseAction = null;
   var config = {};
 
   // Pan/zoom: strokes are stored in "world" coordinates. The visible canvas is
@@ -177,8 +182,23 @@
 
   function togglePan() {
     panMode = !panMode;
+    if (panMode) setEraserMode(false);
     if (panBtn) panBtn.className = panMode ? "active" : "";
     setStatus(panMode ? "Pan mode — drag to move the page" : "Draw mode");
+  }
+
+  function setEraserMode(enabled) {
+    eraserMode = !!enabled;
+    if (eraserBtn) eraserBtn.className = eraserMode ? "active" : "";
+  }
+
+  function toggleEraser() {
+    setEraserMode(!eraserMode);
+    if (eraserMode) {
+      panMode = false;
+      if (panBtn) panBtn.className = "";
+    }
+    setStatus(eraserMode ? "Eraser mode - drag across ink" : "Pen mode");
   }
 
   var sessionId = null;
@@ -455,10 +475,61 @@
   }
 
   function undoStroke() {
-    if (drawing || animating || !strokes.length) return;
-    strokes.pop();
+    if (drawing || erasing || animating || !historyActions.length) return;
+    var action = historyActions.pop();
+    if (action.type === "draw") {
+      var drawIndex = strokes.indexOf(action.stroke);
+      if (drawIndex !== -1) strokes.splice(drawIndex, 1);
+    } else if (action.type === "erase") {
+      action.removed.sort(function (a, b) { return b.index - a.index; });
+      for (var r = 0; r < action.removed.length; r += 1) {
+        strokes.splice(action.removed[r].index, 0, action.removed[r].stroke);
+      }
+    }
     redrawStrokes();
-    setStatus(strokes.length ? "Stroke undone" : "Page blank");
+    setStatus(strokes.length ? "Undo" : "Page blank");
+  }
+
+  function pointSegmentDistanceSquared(p, a, b) {
+    var dx = b.x - a.x;
+    var dy = b.y - a.y;
+    if (!dx && !dy) {
+      dx = p.x - a.x;
+      dy = p.y - a.y;
+      return dx * dx + dy * dy;
+    }
+    var t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy);
+    t = Math.max(0, Math.min(1, t));
+    var x = a.x + t * dx;
+    var y = a.y + t * dy;
+    dx = p.x - x;
+    dy = p.y - y;
+    return dx * dx + dy * dy;
+  }
+
+  function strokeTouchesEraser(stroke, point) {
+    var radius = 15 / view.scale + stroke.width / 2;
+    var limit = radius * radius;
+    if (stroke.pts.length === 1) return pointSegmentDistanceSquared(point, stroke.pts[0], stroke.pts[0]) <= limit;
+    for (var i = 1; i < stroke.pts.length; i += 1) {
+      if (pointSegmentDistanceSquared(point, stroke.pts[i - 1], stroke.pts[i]) <= limit) return true;
+    }
+    return false;
+  }
+
+  function eraseAt(point) {
+    var changed = false;
+    for (var i = strokes.length - 1; i >= 0; i -= 1) {
+      if (!strokeTouchesEraser(strokes[i], point)) continue;
+      if (!currentEraseAction) {
+        currentEraseAction = { type: "erase", removed: [] };
+        historyActions.push(currentEraseAction);
+      }
+      currentEraseAction.removed.push({ index: i, stroke: strokes[i] });
+      strokes.splice(i, 1);
+      changed = true;
+    }
+    if (changed) redrawStrokes();
   }
 
   function dissolveAway(done) {
@@ -480,6 +551,7 @@
       clearScreen();
       ctx.strokeStyle = inkColor();
       strokes = [];
+      historyActions = [];
       currentStroke = null;
       dirty = false;
       pageText.innerHTML = "";
@@ -587,8 +659,10 @@
   function start(event) {
     // Let the on-page scroll buttons receive their clicks.
     var t = event.target || event.srcElement;
-    if (t && (t.tagName === "BUTTON" || (t.parentNode && t.parentNode.className === "pageCtl"))) {
-      return true;
+    var control = t;
+    while (control && control !== wrap) {
+      if (control.tagName === "BUTTON") return true;
+      control = control.parentNode;
     }
     if (animating) return stopEvent(event);
     if (event.pointerId !== undefined && wrap.setPointerCapture) {
@@ -601,6 +675,13 @@
       panning = true;
       panStartScreen = canvasPointFromEvent(event);
       panStartOffset = { ox: view.ox, oy: view.oy };
+      return stopEvent(event);
+    }
+
+    if (eraserMode) {
+      erasing = true;
+      currentEraseAction = null;
+      eraseAt(pointFromEvent(event));
       return stopEvent(event);
     }
 
@@ -621,6 +702,7 @@
       pts: [last]
     };
     strokes.push(currentStroke);
+    historyActions.push({ type: "draw", stroke: currentStroke });
     drawing = true;
     dirty = true;
     showHint(false);
@@ -635,6 +717,10 @@
       view.oy = panStartOffset.oy - (c.y - panStartScreen.y) / view.scale;
       applyView();
       redrawStrokes();
+      return stopEvent(event);
+    }
+    if (erasing) {
+      eraseAt(pointFromEvent(event));
       return stopEvent(event);
     }
     if (!drawing) return stopEvent(event);
@@ -654,6 +740,12 @@
     if (panning) {
       panning = false;
       panStartScreen = null;
+      return stopEvent(event);
+    }
+    if (erasing) {
+      erasing = false;
+      currentEraseAction = null;
+      setStatus("Eraser mode");
       return stopEvent(event);
     }
     if (!drawing) return stopEvent(event);
@@ -683,6 +775,7 @@
     if (animating) return;
     resetView();
     strokes = [];
+    historyActions = [];
     currentStroke = null;
     dirty = false;
     clearScreen();
@@ -1242,6 +1335,7 @@
     resetView();
     ctx.strokeStyle = inkColor();
     strokes = [];
+    historyActions = [];
     currentStroke = null;
     dirty = false;
     clearScreen();
@@ -1283,6 +1377,7 @@
       resetView();
       ctx.strokeStyle = inkColor();
       strokes = [];
+      historyActions = [];
       currentStroke = null;
       dirty = false;
       clearScreen();
@@ -1533,6 +1628,7 @@
   add(zoomOutBtn, "click", zoomOut);
   add(panBtn, "click", togglePan);
   add(resetViewBtn, "click", resetViewAndRedraw);
+  add(eraserBtn, "click", toggleEraser);
 
   var savedStrokeWidth = storageGet("diaryStrokeWidth");
   if (savedStrokeWidth && strokeWidthEl) strokeWidthEl.value = savedStrokeWidth;

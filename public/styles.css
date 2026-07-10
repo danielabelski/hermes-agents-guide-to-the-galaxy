@@ -587,6 +587,11 @@ canvas {
   color: var(--paper);
 }
 
+.zoomCtl button#eraserBtn.active {
+  outline: 3px double var(--ink);
+  outline-offset: -5px;
+}
+
 .typedBox {
   margin-top: 8px;
 }
