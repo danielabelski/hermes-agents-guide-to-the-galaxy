@@ -76,6 +76,7 @@
   var pgUp2 = document.getElementById("pgUp2");
   var pgDn2 = document.getElementById("pgDn2");
   var reply = document.getElementById("reply");
+  var replyToggle = document.getElementById("replyToggle");
   var zoomInBtn = document.getElementById("zoomIn");
   var zoomOutBtn = document.getElementById("zoomOut");
   var panBtn = document.getElementById("panBtn");
@@ -479,6 +480,7 @@
   }
 
   function formReply(text) {
+    setReplyCollapsed(false);
     var out = activeOut();
     var words = String(text || "").split(/\s+/);
     var clean = [];
@@ -506,6 +508,17 @@
       window.setTimeout(tick, REVEAL_TICK_MS);
     }
     tick();
+  }
+
+  function setReplyCollapsed(collapsed) {
+    if (!document.body) return;
+    if (collapsed) document.body.classList.add("replyCollapsed");
+    else document.body.classList.remove("replyCollapsed");
+    if (replyToggle) replyToggle.textContent = collapsed ? "Show" : "Hide";
+  }
+
+  function toggleReply() {
+    setReplyCollapsed(!document.body.classList.contains("replyCollapsed"));
   }
 
   // Slow, e-ink-friendly "thinking" pulse so the page never looks dead while
@@ -1504,6 +1517,7 @@
   add(pgDn, "click", function () { pageScroll(1); });
   add(pgUp2, "click", function () { pageScroll(-1); });
   add(pgDn2, "click", function () { pageScroll(1); });
+  add(replyToggle, "click", toggleReply);
   add(zoomInBtn, "click", zoomIn);
   add(zoomOutBtn, "click", zoomOut);
   add(panBtn, "click", togglePan);
