@@ -91,6 +91,11 @@ bookmark it. Config is via env vars (all optional):
 
 ## Data & privacy
 
+- If a Kindle browser does not retain cookies or local storage, set
+  `DIARY_TRUSTED_IPS` to its fixed LAN address (or a comma-separated list).
+  Those devices can use the plain diary URL; every other client still needs
+  `DIARY_AUTH_TOKEN`.
+
 - Entries and handwriting images live under `data/` and are **git-ignored** —
   personal content never enters the repo.
 - The bridge listens on the LAN with no auth by default. Fine for a home network.

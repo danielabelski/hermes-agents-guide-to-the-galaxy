@@ -137,9 +137,18 @@ const kindleUser = process.env.KINDLE_USER || "kindle";
 // x-diary-auth header or a ?k= query param). Unset = open, exactly as before.
 // The page is served openly; only the API (which reaches models + your data) is gated.
 const authToken = process.env.DIARY_AUTH_TOKEN || "";
+const trustedIps = new Set(String(process.env.DIARY_TRUSTED_IPS || "")
+  .split(",")
+  .map(value => value.trim())
+  .filter(Boolean));
+
+function remoteIp(req) {
+  return String(req.socket?.remoteAddress || "").replace(/^::ffff:/, "");
+}
 
 function authOk(req) {
   if (!authToken) return true;
+  if (trustedIps.has(remoteIp(req))) return true;
   if ((req.headers["x-diary-auth"] || "") === authToken) return true;
   const cookies = String(req.headers.cookie || "").split(";");
   for (const cookie of cookies) {
