@@ -377,6 +377,13 @@ async function callChatStream({ endpoint, model, token, text, imageDataUrl, hist
 // Firm-agent CHANNEL call: hand the note to the Kindle gateway platform adapter,
 // which runs the real agent (MoA + tools) and returns its reply. Non-streaming v1.
 async function callKindleChannel({ text, chatId }) {
+  const channelInstruction = [
+    "[Kindle Scribe channel: The following text was transcribed from handwriting and may contain",
+    "spacing or proper-name errors. Treat likely firm names and people contextually. For any",
+    "question about a person, client, engagement, or the Bearden firm, use the bearden-clients",
+    "tools to look it up before answering. Never guess, fabricate, or expose MoA/reference-model",
+    "discussion. Give only the concise, grounded final answer suitable for an e-ink screen.]"
+  ].join(" ");
   let response;
   try {
     response = await fetch(kindleAdapterUrl, {
@@ -385,7 +392,7 @@ async function callKindleChannel({ text, chatId }) {
         "content-type": "application/json",
         ...(kindleIngestToken ? { "x-kindle-token": kindleIngestToken } : {})
       },
-      body: JSON.stringify({ text, user: kindleUser, chat_id: chatId })
+      body: JSON.stringify({ text: `${channelInstruction}\n\n${text}`, user: kindleUser, chat_id: chatId })
     });
   } catch {
     throw new Error(
@@ -623,7 +630,7 @@ async function handleSend(req, res) {
             endpoint: defaultVisionEndpoint,
             model: defaultVisionModel,
             token: "",
-            text: "Transcribe the handwriting in this image. Output only the transcription.",
+            text: "Transcribe the handwriting exactly. Output only the transcription. Preserve proper names; Bearden is a likely firm surname and must not be split into 'Bear den'.",
             imageDataUrl: body.imageDataUrl,
             mode: "vision"
           });
