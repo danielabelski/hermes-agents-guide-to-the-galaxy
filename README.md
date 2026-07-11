@@ -6,6 +6,15 @@ Hermes answers, and the reply forms on the page or in a side pane. Runs as a
 tiny local web app because a stock Scribe can't sideload native apps — the
 browser is the only channel, so the app is built to feel like one.
 
+[![CI](https://github.com/lEWFkRAD/hermes-agents-guide-to-the-galaxy/actions/workflows/ci.yml/badge.svg)](https://github.com/lEWFkRAD/hermes-agents-guide-to-the-galaxy/actions/workflows/ci.yml)
+
+Community contributions, including reviewed AI-assisted contributions, are
+welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
+This project is available under the [MIT License](LICENSE).
+
+Run `npm run lint` and `npm test` before contributing. Security-sensitive bugs
+must be reported privately as described in [SECURITY.md](SECURITY.md).
+
 ## How it works
 
 ```
@@ -17,6 +26,22 @@ the handwriting locally, submits text to Hermes's authenticated localhost-only
 Kindle platform adapter, and receives the completed tool-assisted agent reply.
 
 ## Run it
+
+First install and enable the optional Hermes platform plugin. It lives in
+Hermes's persistent user-plugin directory—not inside the Hermes source tree—so
+normal Hermes updates do not delete it:
+
+```powershell
+hermes plugins install lEWFkRAD/hermes-agents-guide-to-the-galaxy/kindle-plugin --enable
+hermes gateway restart
+Invoke-RestMethod http://127.0.0.1:8793/health
+```
+
+The installer prompts for `KINDLE_INGEST_TOKEN` and saves it in Hermes's local
+environment file. Set `KINDLE_ALLOWED_USERS` to the stable identity used by the
+bridge (for example, `jeff`). Keep `KINDLE_ALLOW_ALL_USERS` unset.
+
+Then start the diary bridge:
 
 ```
 npm start          # node server.mjs — listens on 0.0.0.0:8791
